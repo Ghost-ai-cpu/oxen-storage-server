@@ -1,3 +1,7 @@
 [submodule "vendors/spdlog"]
 	path = vendors/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "vendors/worktips-mq"]
+	path = vendors/worktips-mq
+	url = https://github.com/Ghost-ai-cpu/worktips-mq
+	branch = wtips-base
