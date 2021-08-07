@@ -3,12 +3,12 @@
 #include <boost/program_options.hpp>
 #include <string>
 
-namespace loki {
+namespace worktips {
 
 struct command_line_options {
     uint16_t port;
-    std::string lokid_rpc_ip = "127.0.0.1";
-    uint16_t lokid_rpc_port = 22023; // Or 38157 if `testnet`
+    std::string worktipsd_rpc_ip = "127.0.0.1";
+    uint16_t worktipsd_rpc_port = 22023; // Or 38157 if `testnet`
     uint16_t lmq_port;
     bool force_start = false;
     bool print_version = false;
@@ -17,9 +17,9 @@ struct command_line_options {
     std::string ip;
     std::string log_level = "info";
     std::string data_dir;
-    std::string lokid_key; // test only (but needed for backwards compatibility)
-    std::string lokid_x25519_key; // test only
-    std::string lokid_ed25519_key; // test only
+    std::string worktipsd_key; // test only (but needed for backwards compatibility)
+    std::string worktipsd_x25519_key; // test only
+    std::string worktipsd_ed25519_key; // test only
 };
 
 class command_line_parser {
@@ -36,4 +36,4 @@ class command_line_parser {
     std::string binary_name_;
 };
 
-} // namespace loki
+} // namespace worktips

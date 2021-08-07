@@ -1,11 +1,11 @@
 
 #include "reachability_testing.h"
-#include "loki_logger.h"
+#include "worktips_logger.h"
 
 using std::chrono::steady_clock;
 using namespace std::chrono_literals;
 
-namespace loki {
+namespace worktips {
 
 namespace detail {
 
@@ -16,12 +16,12 @@ reach_record_t::reach_record_t() {
 
 } // namespace detail
 
-/// How long to wait until reporting unreachable nodes to Lokid
+/// How long to wait until reporting unreachable nodes to Worktipsd
 constexpr std::chrono::minutes UNREACH_GRACE_PERIOD = 120min;
 
 bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType type) {
 
-    LOKI_LOG(trace, "should_report_as");
+    WORKTIPS_LOG(trace, "should_report_as");
 
     using std::chrono::duration_cast;
     using std::chrono::minutes;
@@ -51,15 +51,15 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
 
         const auto elapsed = record.last_failure - record.first_failure;
         const auto elapsed_min = duration_cast<minutes>(elapsed).count();
-        LOKI_LOG(debug, "[reach] First time failed {} minutes ago", elapsed_min);
+        WORKTIPS_LOG(debug, "[reach] First time failed {} minutes ago", elapsed_min);
 
         if (it->second.reported) {
-            LOKI_LOG(debug, "[reach]  Already reported node: {}", sn);
+            WORKTIPS_LOG(debug, "[reach]  Already reported node: {}", sn);
             // TODO: Might still want to report as unreachable since this status
-            // gets reset to `true` on Lokid restart
+            // gets reset to `true` on Worktipsd restart
             return false;
         } else if (elapsed > UNREACH_GRACE_PERIOD) {
-            LOKI_LOG(debug, "[reach] Will REPORT {} to Lokid!", sn);
+            WORKTIPS_LOG(debug, "[reach] Will REPORT {} to Worktipsd!", sn);
             return true;
         } else {
             // No need to report yet
@@ -86,15 +86,15 @@ void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
     const auto last_warning_elapsed = now - last_warning_tp;
     const bool would_warn = static_cast<bool>(last_warning_elapsed > 120s);
 
-    LOKI_LOG(debug, "Last reset or pinged via http: {}s", http_elapsed.count());
+    WORKTIPS_LOG(debug, "Last reset or pinged via http: {}s", http_elapsed.count());
 
     if (http_elapsed > MAX_TIME_WITHOUT_PING) {
 
         if (would_warn) {
             if (latest_incoming_http_.time_since_epoch() == 0s) {
-                LOKI_LOG(warn, "Have NEVER received http pings!");
+                WORKTIPS_LOG(warn, "Have NEVER received http pings!");
             } else {
-                LOKI_LOG(warn,
+                WORKTIPS_LOG(warn,
                          "Have not received http pings for a long time! Last "
                          "time was: "
                          "{} mins ago.",
@@ -103,7 +103,7 @@ void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
                              .count());
             }
 
-            LOKI_LOG(warn, "Please check your http port. Not being reachable "
+            WORKTIPS_LOG(warn, "Please check your http port. Not being reachable "
                            "over http may result in a deregistration!");
             last_warning_tp = now;
         }
@@ -111,30 +111,30 @@ void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
         this->http_ok = false;
     } else if (!this->http_ok) {
         this->http_ok = true;
-        LOKI_LOG(info, "Http port is back to OK");
+        WORKTIPS_LOG(info, "Http port is back to OK");
     }
 
     const auto last_lmq = std::max(reset_time, latest_incoming_lmq_);
     const auto lmq_elapsed =
         duration_cast<std::chrono::seconds>(now - last_lmq);
 
-    LOKI_LOG(debug, "Last reset or pinged via lmq: {}s", lmq_elapsed.count());
+    WORKTIPS_LOG(debug, "Last reset or pinged via lmq: {}s", lmq_elapsed.count());
 
     if (lmq_elapsed > MAX_TIME_WITHOUT_PING) {
 
         if (would_warn) {
 
             if (latest_incoming_lmq_.time_since_epoch() == 0s) {
-                LOKI_LOG(warn, "Have NEVER received lmq pings!");
+                WORKTIPS_LOG(warn, "Have NEVER received lmq pings!");
             } else {
-                LOKI_LOG(
+                WORKTIPS_LOG(
                     warn,
                     "Have not received lmq pings for a long time! Last time "
                     "was: {} mins ago",
                     duration_cast<std::chrono::minutes>(lmq_elapsed).count());
             }
 
-            LOKI_LOG(warn, "Please check your lmq port. Not being reachable "
+            WORKTIPS_LOG(warn, "Please check your lmq port. Not being reachable "
                            "over lmq may result in a deregistration!");
             last_warning_tp = now;
         }
@@ -143,13 +143,13 @@ void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
         
     } else if (!this->lmq_ok) {
         this->lmq_ok = true;
-        LOKI_LOG(info, "Lmq port is back to OK");
+        WORKTIPS_LOG(info, "Lmq port is back to OK");
     }
 }
 
 void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType type, bool val) {
 
-    LOKI_LOG(trace, "record_reachable");
+    WORKTIPS_LOG(trace, "record_reachable");
 
     const auto it = offline_nodes_.find(sn);
 
@@ -159,17 +159,17 @@ void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType 
 
         if (val) {
             // The node is good and there is no record, so do nothing
-            LOKI_LOG(debug, "[reach] Node is reachable via {} (no record) {}",
+            WORKTIPS_LOG(debug, "[reach] Node is reachable via {} (no record) {}",
                      type == ReachType::HTTP ? "HTTP" : "ZMQ", sn);
         } else {
 
             detail::reach_record_t record;
 
             if (type == ReachType::HTTP) {
-                LOKI_LOG(debug, "[reach] Adding a new node to UNREACHABLE via HTTP: {}", sn);
+                WORKTIPS_LOG(debug, "[reach] Adding a new node to UNREACHABLE via HTTP: {}", sn);
                 record.http_ok = false;
             } else if (type == ReachType::ZMQ) {
-                LOKI_LOG(debug, "[reach] Adding a new node to UNREACHABLE via ZMQ: {}", sn);
+                WORKTIPS_LOG(debug, "[reach] Adding a new node to UNREACHABLE via ZMQ: {}", sn);
                 record.zmq_ok = false;
             }
 
@@ -183,15 +183,15 @@ void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType 
         // Sometimes we might still have this entry even if the node has become reachable again
 
         if (type == ReachType::HTTP) {
-            LOKI_LOG(debug, "[reach] node {} is {} via HTTP", sn, val ? "OK" : "UNREACHABLE");
+            WORKTIPS_LOG(debug, "[reach] node {} is {} via HTTP", sn, val ? "OK" : "UNREACHABLE");
             record.http_ok = val;
         } else if (type == ReachType::ZMQ) {
-            LOKI_LOG(debug, "[reach] node {} is {} via ZMQ", sn, val ? "OK" : "UNREACHABLE");
+            WORKTIPS_LOG(debug, "[reach] node {} is {} via ZMQ", sn, val ? "OK" : "UNREACHABLE");
             record.zmq_ok = val;
         }
 
         if (!val) {
-            LOKI_LOG(debug,
+            WORKTIPS_LOG(debug,
                      "[reach] Node is ALREADY known to be UNREACHABLE: {}, "
                      "http_ok: {}, "
                      "zmq_ok: {}",
@@ -212,7 +212,7 @@ bool reachability_records_t::expire(const sn_pub_key_t& sn) {
 
     bool erased = offline_nodes_.erase(sn);
     if (erased)
-        LOKI_LOG(debug, "[reach] Removed entry for {}", sn);
+        WORKTIPS_LOG(debug, "[reach] Removed entry for {}", sn);
 
     return erased;
 }
@@ -237,10 +237,10 @@ boost::optional<sn_pub_key_t> reachability_records_t::next_to_test() {
         return boost::none;
     } else {
 
-        LOKI_LOG(debug, "Selecting to be re-tested: {}", it->first);
+        WORKTIPS_LOG(debug, "Selecting to be re-tested: {}", it->first);
 
         return it->first;
     }
 }
 
-} // namespace loki
+} // namespace worktips

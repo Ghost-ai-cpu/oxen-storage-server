@@ -21,13 +21,13 @@ add_library(httpserver_lib STATIC
     request_handler.cpp
     )
 
-loki_add_subdirectory(../common common)
-loki_add_subdirectory(../storage storage)
-loki_add_subdirectory(../utils utils)
-loki_add_subdirectory(../pow pow)
-loki_add_subdirectory(../crypto crypto)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
-loki_add_subdirectory(../vendors/loki-mq loki-mq)
+worktips_add_subdirectory(../common common)
+worktips_add_subdirectory(../storage storage)
+worktips_add_subdirectory(../utils utils)
+worktips_add_subdirectory(../pow pow)
+worktips_add_subdirectory(../crypto crypto)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells worktips-mq to do a static build
+worktips_add_subdirectory(../vendors/worktips-mq worktips-mq)
 find_package(OpenSSL REQUIRED)
 
 find_package(Boost
@@ -45,14 +45,14 @@ target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
 target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
-target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
+target_link_libraries(httpserver_lib PUBLIC worktipsmq::worktipsmq)
 
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
 
-set(BIN_NAME loki-storage)
+set(BIN_NAME worktips-storage)
 
 add_executable(httpserver main.cpp)
 set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})

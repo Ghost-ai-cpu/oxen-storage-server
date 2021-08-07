@@ -3,25 +3,25 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <lokimq/string_view.h>
+#include <worktipsmq/string_view.h>
 
-namespace lokimq {
-class LokiMQ;
+namespace worktipsmq {
+class WorktipsMQ;
 struct Allow;
 class Message;
-} // namespace lokimq
+} // namespace worktipsmq
 
-using lokimq::LokiMQ;
+using worktipsmq::WorktipsMQ;
 
-namespace loki {
+namespace worktips {
 
-struct lokid_key_pair_t;
+struct worktipsd_key_pair_t;
 class ServiceNode;
 class RequestHandler;
 
-class LokimqServer {
+class WorktipsmqServer {
 
-    std::unique_ptr<LokiMQ> lokimq_;
+    std::unique_ptr<WorktipsMQ> worktipsmq_;
 
     // Has information about current SNs
     ServiceNode* service_node_;
@@ -29,33 +29,33 @@ class LokimqServer {
     RequestHandler* request_handler_;
 
     // Get nodes' address
-    std::string peer_lookup(lokimq::string_view pubkey_bin) const;
+    std::string peer_lookup(worktipsmq::string_view pubkey_bin) const;
 
     // Handle Session data coming from peer SN
-    void handle_sn_data(lokimq::Message& message);
+    void handle_sn_data(worktipsmq::Message& message);
 
     // Handle Session client requests arrived via proxy
-    void handle_sn_proxy_exit(lokimq::Message& message);
+    void handle_sn_proxy_exit(worktipsmq::Message& message);
 
-    void handle_onion_request(lokimq::Message& message);
+    void handle_onion_request(worktipsmq::Message& message);
 
     uint16_t port_ = 0;
 
   public:
-    LokimqServer(uint16_t port);
-    ~LokimqServer();
+    WorktipsmqServer(uint16_t port);
+    ~WorktipsmqServer();
 
-    // Initialize lokimq
+    // Initialize worktipsmq
     void init(ServiceNode* sn, RequestHandler* rh,
-              const lokid_key_pair_t& keypair);
+              const worktipsd_key_pair_t& keypair);
 
     uint16_t port() { return port_; }
 
-    /// True if LokiMQ instance has been set
-    explicit operator bool() const { return (bool) lokimq_; }
-    /// Dereferencing via * or -> accesses the contained LokiMQ instance.
-    LokiMQ& operator*() const { return *lokimq_; }
-    LokiMQ* operator->() const { return lokimq_.get(); }
+    /// True if WorktipsMQ instance has been set
+    explicit operator bool() const { return (bool) worktipsmq_; }
+    /// Dereferencing via * or -> accesses the contained WorktipsMQ instance.
+    WorktipsMQ& operator*() const { return *worktipsmq_; }
+    WorktipsMQ* operator->() const { return worktipsmq_.get(); }
 };
 
-} // namespace loki
+} // namespace worktips

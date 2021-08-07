@@ -35,17 +35,17 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 
 /// +===========================================
 
-static constexpr auto LOKI_FILE_SERVER_TARGET_HEADER =
-    "X-Loki-File-Server-Target";
-static constexpr auto LOKI_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
-static constexpr auto LOKI_FILE_SERVER_HEADERS_HEADER =
-    "X-Loki-File-Server-Headers";
+static constexpr auto WORKTIPS_FILE_SERVER_TARGET_HEADER =
+    "X-Worktips-File-Server-Target";
+static constexpr auto WORKTIPS_FILE_SERVER_VERB_HEADER = "X-Worktips-File-Server-Verb";
+static constexpr auto WORKTIPS_FILE_SERVER_HEADERS_HEADER =
+    "X-Worktips-File-Server-Headers";
 
-using loki::storage::Item;
+using worktips::storage::Item;
 
 using error_code = boost::system::error_code;
 
-namespace loki {
+namespace worktips {
 
 constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 
@@ -73,7 +73,7 @@ void make_http_request(boost::asio::io_context& ioc,
         resolver.resolve(address, "http", ec);
 
     if (ec) {
-        LOKI_LOG(error,
+        WORKTIPS_LOG(error,
                  "http: Failed to parse the IP address <{}>. Error code = {}. "
                  "Message: {}",
                  address, ec.value(), ec.message());
@@ -94,20 +94,20 @@ void make_http_request(boost::asio::io_context& ioc,
     session->start();
 }
 
-// ======================== Lokid Client ========================
-LokidClient::LokidClient(boost::asio::io_context& ioc, std::string ip,
+// ======================== Worktipsd Client ========================
+WorktipsdClient::WorktipsdClient(boost::asio::io_context& ioc, std::string ip,
                          uint16_t port)
-    : ioc_(ioc), lokid_rpc_ip_(std::move(ip)), lokid_rpc_port_(port) {}
+    : ioc_(ioc), worktipsd_rpc_ip_(std::move(ip)), worktipsd_rpc_port_(port) {}
 
-void LokidClient::make_lokid_request(boost::string_view method,
+void WorktipsdClient::make_worktipsd_request(boost::string_view method,
                                      const nlohmann::json& params,
                                      http_callback_t&& cb) const {
 
-    make_custom_lokid_request(lokid_rpc_ip_, lokid_rpc_port_, method, params,
+    make_custom_worktipsd_request(worktipsd_rpc_ip_, worktipsd_rpc_port_, method, params,
                               std::move(cb));
 }
 
-void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
+void WorktipsdClient::make_custom_worktipsd_request(const std::string& daemon_ip,
                                             const uint16_t daemon_port,
                                             boost::string_view method,
                                             const nlohmann::json& params,
@@ -128,13 +128,13 @@ void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
     req->target(target);
     req->prepare_payload();
 
-    LOKI_LOG(trace, "Making lokid request, method: {}", method.to_string());
+    WORKTIPS_LOG(trace, "Making worktipsd request, method: {}", method.to_string());
 
     make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
 
 static bool validateHexKey(const std::string& key,
-                           const size_t key_length = loki::KEY_LENGTH) {
+                           const size_t key_length = worktips::KEY_LENGTH) {
     return key.size() == 2 * key_length &&
            std::all_of(key.begin(), key.end(), [](char c) {
                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -142,19 +142,19 @@ static bool validateHexKey(const std::string& key,
 }
 
 std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
-LokidClient::wait_for_privkey() {
-    // fetch SN private key from lokid; do this synchronously because we can't
+WorktipsdClient::wait_for_privkey() {
+    // fetch SN private key from worktipsd; do this synchronously because we can't
     // finish startup until we have it.
-    loki::private_key_t private_key;
-    loki::private_key_ed25519_t private_key_ed;
-    loki::private_key_t private_key_x;
-    LOKI_LOG(info, "Retrieving SN key from lokid");
+    worktips::private_key_t private_key;
+    worktips::private_key_ed25519_t private_key_ed;
+    worktips::private_key_t private_key_x;
+    WORKTIPS_LOG(info, "Retrieving SN key from worktipsd");
     boost::asio::steady_timer delay{ioc_};
-    std::function<void(loki::sn_response_t && res)> key_fetch;
-    key_fetch = [&](loki::sn_response_t res) {
+    std::function<void(worktips::sn_response_t && res)> key_fetch;
+    key_fetch = [&](worktips::sn_response_t res) {
         try {
-            if (res.error_code != loki::SNodeError::NO_ERROR)
-                throw std::runtime_error(loki::error_string(res.error_code));
+            if (res.error_code != worktips::SNodeError::NO_ERROR)
+                throw std::runtime_error(worktips::error_string(res.error_code));
             else if (!res.body)
                 throw std::runtime_error("empty body");
             else {
@@ -174,29 +174,29 @@ LokidClient::wait_for_privkey() {
                     !validateHexKey(privkey_x))
                     throw std::runtime_error("returned value is not hex");
                 else {
-                    private_key = loki::lokidKeyFromHex(legacy_privkey);
+                    private_key = worktips::worktipsdKeyFromHex(legacy_privkey);
                     // TODO: check that one is derived from the other as a
                     // sanity check?
                     private_key_ed =
                         private_key_ed25519_t::from_hex(privkey_ed);
-                    private_key_x = loki::lokidKeyFromHex(privkey_x);
+                    private_key_x = worktips::worktipsdKeyFromHex(privkey_x);
                     // run out of work, which will end the event loop
                 }
             }
         } catch (const std::exception& e) {
-            LOKI_LOG(critical,
-                     "Error retrieving SN privkey from lokid @ {}:{}: {}.  Is "
-                     "lokid running?  Retrying in 5s",
-                     lokid_rpc_ip_, lokid_rpc_port_, e.what());
+            WORKTIPS_LOG(critical,
+                     "Error retrieving SN privkey from worktipsd @ {}:{}: {}.  Is "
+                     "worktipsd running?  Retrying in 5s",
+                     worktipsd_rpc_ip_, worktipsd_rpc_port_, e.what());
 
             delay.expires_after(std::chrono::seconds{5});
             delay.async_wait([this,
                               &key_fetch](const boost::system::error_code&) {
-                make_lokid_request("get_service_node_privkey", {}, key_fetch);
+                make_worktipsd_request("get_service_node_privkey", {}, key_fetch);
             });
         }
     };
-    make_lokid_request("get_service_node_privkey", {}, key_fetch);
+    make_worktipsd_request("get_service_node_privkey", {}, key_fetch);
     ioc_.run(); // runs until we get success above
     ioc_.restart();
 
@@ -219,7 +219,7 @@ static void accept_connection(boost::asio::io_context& ioc,
     constexpr std::chrono::milliseconds ACCEPT_DELAY = 50ms;
 
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
-        LOKI_LOG(trace, "connection accepted");
+        WORKTIPS_LOG(trace, "connection accepted");
         if (!ec) {
 
             std::make_shared<connection_t>(ioc, ssl_ctx, std::move(socket), sn,
@@ -233,11 +233,11 @@ static void accept_connection(boost::asio::io_context& ioc,
             // TODO: remove this once we confirmed that there is
             // no more socket leaking
             if (ec == boost::system::errc::too_many_files_open) {
-                LOKI_LOG(critical, "Too many open files, aborting");
+                WORKTIPS_LOG(critical, "Too many open files, aborting");
                 abort();
             }
 
-            LOKI_LOG(
+            WORKTIPS_LOG(
                 error,
                 "Could not accept a new connection {}: {}. Will only start "
                 "accepting new connections after a short delay.",
@@ -265,7 +265,7 @@ void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
          const boost::filesystem::path& base_path, ServiceNode& sn,
          RequestHandler& rh, RateLimiter& rate_limiter, Security& security) {
 
-    LOKI_LOG(trace, "http server run");
+    WORKTIPS_LOG(trace, "http server run");
 
     const auto address =
         boost::asio::ip::make_address(ip); /// throws if incorrect
@@ -300,7 +300,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
 
     get_net_stats().connections_in++;
 
-    LOKI_LOG(trace, "connection_t [{}]", conn_idx);
+    WORKTIPS_LOG(trace, "connection_t [{}]", conn_idx);
 
     request_.body_limit(1024 * 1024 * 10); // 10 mb
 
@@ -311,14 +311,14 @@ connection_t::~connection_t() {
 
     // Safety net
     if (stream_.lowest_layer().is_open()) {
-        LOKI_LOG(debug, "Client socket should be closed by this point, but "
+        WORKTIPS_LOG(debug, "Client socket should be closed by this point, but "
                         "wasn't. Closing now.");
         stream_.lowest_layer().close();
     }
 
     get_net_stats().connections_in--;
 
-    LOKI_LOG(trace, "~connection_t [{}]", conn_idx);
+    WORKTIPS_LOG(trace, "~connection_t [{}]", conn_idx);
 }
 
 void connection_t::start() {
@@ -337,10 +337,10 @@ void connection_t::do_handshake() {
 void connection_t::on_handshake(boost::system::error_code ec) {
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(trace, "Open https socket: {}", sockfd);
+    WORKTIPS_LOG(trace, "Open https socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
-        LOKI_LOG(debug, "ssl handshake failed: ec: {} ({})", ec.value(),
+        WORKTIPS_LOG(debug, "ssl handshake failed: ec: {} ({})", ec.value(),
                  ec.message());
         this->clean_up();
         deadline_.cancel();
@@ -355,13 +355,13 @@ void connection_t::clean_up() { this->do_close(); }
 void connection_t::notify(boost::optional<const message_t&> msg) {
 
     if (!notification_ctx_) {
-        LOKI_LOG(error,
+        WORKTIPS_LOG(error,
                  "Trying to notify a connection without notification context");
         return;
     }
 
     if (msg) {
-        LOKI_LOG(trace, "Processing message notification: {}", msg->data);
+        WORKTIPS_LOG(trace, "Processing message notification: {}", msg->data);
         // save messages, so we can access them once the timer event happens
         notification_ctx_->message = msg;
     }
@@ -374,10 +374,10 @@ void connection_t::read_request() {
 
     auto on_data = [self = shared_from_this()](error_code ec,
                                                size_t bytes_transferred) {
-        LOKI_LOG(trace, "on data: {} bytes", bytes_transferred);
+        WORKTIPS_LOG(trace, "on data: {} bytes", bytes_transferred);
 
         if (ec) {
-            LOKI_LOG(
+            WORKTIPS_LOG(
                 error,
                 "Failed to read from a socket [{}: {}], connection idx: {}",
                 ec.value(), ec.message(), self->conn_idx);
@@ -390,7 +390,7 @@ void connection_t::read_request() {
         try {
             self->process_request();
         } catch (const std::exception& e) {
-            LOKI_LOG(critical, "Exception caught processing a request: {}",
+            WORKTIPS_LOG(critical, "Exception caught processing a request: {}",
                      e.what());
             self->body_stream_ << e.what();
         }
@@ -412,19 +412,19 @@ static bool verify_signature(const std::string& payload,
 }
 
 bool connection_t::validate_snode_request() {
-    if (!parse_header(LOKI_SENDER_SNODE_PUBKEY_HEADER,
-                      LOKI_SNODE_SIGNATURE_HEADER)) {
-        LOKI_LOG(debug, "Missing signature headers for a Service Node request");
+    if (!parse_header(WORKTIPS_SENDER_SNODE_PUBKEY_HEADER,
+                      WORKTIPS_SNODE_SIGNATURE_HEADER)) {
+        WORKTIPS_LOG(debug, "Missing signature headers for a Service Node request");
         return false;
     }
-    const auto& signature = header_[LOKI_SNODE_SIGNATURE_HEADER];
-    const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY_HEADER];
+    const auto& signature = header_[WORKTIPS_SNODE_SIGNATURE_HEADER];
+    const auto& public_key_b32z = header_[WORKTIPS_SENDER_SNODE_PUBKEY_HEADER];
 
     /// Known service node
     const std::string snode_address = public_key_b32z + ".snode";
     if (!service_node_.is_snode_address_known(snode_address)) {
         body_stream_ << "Unknown service node\n";
-        LOKI_LOG(debug, "Discarding signature from unknown service node: {}",
+        WORKTIPS_LOG(debug, "Discarding signature from unknown service node: {}",
                  public_key_b32z);
         response_.result(http::status::unauthorized);
         return false;
@@ -432,7 +432,7 @@ bool connection_t::validate_snode_request() {
 
     if (!verify_signature(request_.get().body(), signature, public_key_b32z)) {
         constexpr auto msg = "Could not verify batch signature";
-        LOKI_LOG(debug, "{}", msg);
+        WORKTIPS_LOG(debug, "{}", msg);
         body_stream_ << msg;
         response_.result(http::status::unauthorized);
         return false;
@@ -449,7 +449,7 @@ void connection_t::process_storage_test_req(uint64_t height,
                                             const std::string& tester_pk,
                                             const std::string& msg_hash) {
 
-    LOKI_LOG(trace, "Performing storage test, attempt: {}", repetition_count_);
+    WORKTIPS_LOG(trace, "Performing storage test, attempt: {}", repetition_count_);
 
     std::string answer;
 
@@ -463,7 +463,7 @@ void connection_t::process_storage_test_req(uint64_t height,
     const auto elapsed_time =
         std::chrono::steady_clock::now() - start_timestamp_;
     if (status == MessageTestStatus::SUCCESS) {
-        LOKI_LOG(
+        WORKTIPS_LOG(
             debug, "Storage test success! Attempts: {}. Took {} ms",
             repetition_count_,
             std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_time)
@@ -487,7 +487,7 @@ void connection_t::process_storage_test_req(uint64_t height,
                                   tester_pk](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
-                    LOKI_LOG(error,
+                    WORKTIPS_LOG(error,
                              "Repeat timer failed for storage test [{}: {}]",
                              ec.value(), ec.message());
                 }
@@ -503,7 +503,7 @@ void connection_t::process_storage_test_req(uint64_t height,
         response_.result(http::status::ok);
     } else {
         // Promote this to `error` once we enforce storage testing
-        LOKI_LOG(debug, "Failed storage test, tried {} times.",
+        WORKTIPS_LOG(debug, "Failed storage test, tried {} times.",
                  repetition_count_);
         nlohmann::json json_res;
         json_res["status"] = "other";
@@ -519,7 +519,7 @@ void connection_t::process_blockchain_test_req(uint64_t,
     // Note: `height` can be 0, which is the default value for old SS, allowed
     // pre HF13
 
-    LOKI_LOG(debug, "Performing blockchain test");
+    WORKTIPS_LOG(debug, "Performing blockchain test");
 
     auto callback = [this](blockchain_test_answer_t answer) {
         this->response_.result(http::status::ok);
@@ -537,15 +537,15 @@ void connection_t::process_blockchain_test_req(uint64_t,
 }
 
 static void print_headers(const request_t& req) {
-    LOKI_LOG(info, "HEADERS:");
+    WORKTIPS_LOG(info, "HEADERS:");
     for (const auto& field : req) {
-        LOKI_LOG(info, "    [{}]: {}", field.name_string(), field.value());
+        WORKTIPS_LOG(info, "    [{}]: {}", field.name_string(), field.value());
     }
 }
 
 void connection_t::process_onion_req() {
 
-    LOKI_LOG(debug, "Processing an onion request");
+    WORKTIPS_LOG(debug, "Processing an onion request");
 
     const request_t& req = this->request_.get();
 
@@ -554,12 +554,12 @@ void connection_t::process_onion_req() {
     // Need to make sure we are not blocking waiting for the response
     delay_response_ = true;
 
-    auto on_response = [wself = std::weak_ptr<connection_t>{shared_from_this()}](loki::Response res) {
-        LOKI_LOG(debug, "Got an onion response as guard node");
+    auto on_response = [wself = std::weak_ptr<connection_t>{shared_from_this()}](worktips::Response res) {
+        WORKTIPS_LOG(debug, "Got an onion response as guard node");
 
         auto self = wself.lock();
         if (!self) {
-            LOKI_LOG(debug, "Connection is no longer valid, dropping onion response");
+            WORKTIPS_LOG(debug, "Connection is no longer valid, dropping onion response");
             return;
         }
 
@@ -595,7 +595,7 @@ void connection_t::process_onion_req() {
     } catch (const std::exception& e) {
         auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
                                e.what());
-        LOKI_LOG(error, "{}", msg);
+        WORKTIPS_LOG(error, "{}", msg);
         response_.result(http::status::bad_request);
         this->body_stream_ << std::move(msg);
         this->write_response();
@@ -608,7 +608,7 @@ void connection_t::process_proxy_req() {
 
     const int req_idx = req_counter;
 
-    LOKI_LOG(debug, "[{}] Processing proxy request: we are first hop", req_idx);
+    WORKTIPS_LOG(debug, "[{}] Processing proxy request: we are first hop", req_idx);
 
     service_node_.record_proxy_request();
 
@@ -618,37 +618,37 @@ void connection_t::process_proxy_req() {
     // print_headers(req);
 #endif
 
-    if (!parse_header(LOKI_SENDER_KEY_HEADER, LOKI_TARGET_SNODE_KEY)) {
-        LOKI_LOG(debug, "Missing headers for a proxy request");
+    if (!parse_header(WORKTIPS_SENDER_KEY_HEADER, WORKTIPS_TARGET_SNODE_KEY)) {
+        WORKTIPS_LOG(debug, "Missing headers for a proxy request");
         return;
     }
 
     delay_response_ = true;
 
-    const auto& sender_key = header_[LOKI_SENDER_KEY_HEADER];
-    const auto& target_snode_key = header_[LOKI_TARGET_SNODE_KEY];
+    const auto& sender_key = header_[WORKTIPS_SENDER_KEY_HEADER];
+    const auto& target_snode_key = header_[WORKTIPS_TARGET_SNODE_KEY];
 
-    LOKI_LOG(debug, "[{}] Destination: {}", req_idx, target_snode_key);
+    WORKTIPS_LOG(debug, "[{}] Destination: {}", req_idx, target_snode_key);
 
     auto sn = service_node_.find_node_by_ed25519_pk(target_snode_key);
 
     // TODO: make an https response out of what we got back
     auto on_proxy_response = [wself = std::weak_ptr<connection_t>{shared_from_this()}, req_idx](
             bool success, std::vector<std::string> data) {
-        LOKI_LOG(debug, "on proxy response: {}",
+        WORKTIPS_LOG(debug, "on proxy response: {}",
                  success ? "success" : "failure");
 
         auto self = wself.lock();
         if (!self) {
-            LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+            WORKTIPS_LOG(debug, "Connection is no longer valid, dropping proxy response");
             return;
         }
 
         if (!success) {
-            LOKI_LOG(debug, "Proxy response FAILED (timeout), idx: {}", req_idx);
+            WORKTIPS_LOG(debug, "Proxy response FAILED (timeout), idx: {}", req_idx);
             self->response_.result(http::status::gateway_timeout);
         } else if (data.size() == 2) {
-            LOKI_LOG(debug, "Proxy respose with status, idx: {}", req_idx);
+            WORKTIPS_LOG(debug, "Proxy respose with status, idx: {}", req_idx);
 
             try {
                 int status = std::stoi(data[0]);
@@ -659,10 +659,10 @@ void connection_t::process_proxy_req() {
             }
 
         } else if (data.size() != 1) {
-            LOKI_LOG(debug, "Proxy response FAILED (wrong data size), idx: {}", req_idx);
+            WORKTIPS_LOG(debug, "Proxy response FAILED (wrong data size), idx: {}", req_idx);
             self->response_.result(http::status::internal_server_error);
         } else {
-            LOKI_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
+            WORKTIPS_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
             self->body_stream_ << data[0];
             self->response_.result(http::status::ok);
         }
@@ -673,19 +673,19 @@ void connection_t::process_proxy_req() {
     };
 
     if (!sn) {
-        LOKI_LOG(debug, "Could not find target snode for proxy: {}",
+        WORKTIPS_LOG(debug, "Could not find target snode for proxy: {}",
                  target_snode_key);
         on_proxy_response(false, {});
         return;
     }
 
-    LOKI_LOG(debug, "Target Snode: {}", target_snode_key);
+    WORKTIPS_LOG(debug, "Target Snode: {}", target_snode_key);
 
-    // Send this request to SN over either HTTP or LOKIMQ
+    // Send this request to SN over either HTTP or WORKTIPSMQ
     auto sn_req =
-        ss_client::Request{req.body(), {{LOKI_SENDER_KEY_HEADER, sender_key}}};
+        ss_client::Request{req.body(), {{WORKTIPS_SENDER_KEY_HEADER, sender_key}}};
 
-    LOKI_LOG(debug, "About to send a proxy exit requst, idx: {}", req_counter);
+    WORKTIPS_LOG(debug, "About to send a proxy exit requst, idx: {}", req_counter);
     req_counter += 1;
 
     service_node_.send_to_sn(*sn, ss_client::ReqMethod::PROXY_EXIT,
@@ -694,34 +694,34 @@ void connection_t::process_proxy_req() {
 
 void connection_t::process_file_proxy_req() {
 
-    LOKI_LOG(debug, "Processing a file proxy request: we are first hop");
+    WORKTIPS_LOG(debug, "Processing a file proxy request: we are first hop");
 
     const request_t& original_req = this->request_.get();
 
     delay_response_ = true;
 
-    if (!parse_header(LOKI_FILE_SERVER_TARGET_HEADER,
-                      LOKI_FILE_SERVER_VERB_HEADER,
-                      LOKI_FILE_SERVER_HEADERS_HEADER)) {
-        LOKI_LOG(error, "Missing headers for a file proxy request");
+    if (!parse_header(WORKTIPS_FILE_SERVER_TARGET_HEADER,
+                      WORKTIPS_FILE_SERVER_VERB_HEADER,
+                      WORKTIPS_FILE_SERVER_HEADERS_HEADER)) {
+        WORKTIPS_LOG(error, "Missing headers for a file proxy request");
         // TODO: The connection should be closed by the timer if we return
         // early, but need to double-check that! (And close it early if
         // possible)
         return;
     }
 
-    const auto& target = header_[LOKI_FILE_SERVER_TARGET_HEADER];
-    const auto& verb_str = header_[LOKI_FILE_SERVER_VERB_HEADER];
-    const auto& headers_str = header_[LOKI_FILE_SERVER_HEADERS_HEADER];
+    const auto& target = header_[WORKTIPS_FILE_SERVER_TARGET_HEADER];
+    const auto& verb_str = header_[WORKTIPS_FILE_SERVER_VERB_HEADER];
+    const auto& headers_str = header_[WORKTIPS_FILE_SERVER_HEADERS_HEADER];
 
-    LOKI_LOG(trace, "Target: {}", target);
-    LOKI_LOG(trace, "Verb: {}", verb_str);
-    LOKI_LOG(trace, "Headers json: {}", headers_str);
+    WORKTIPS_LOG(trace, "Target: {}", target);
+    WORKTIPS_LOG(trace, "Verb: {}", verb_str);
+    WORKTIPS_LOG(trace, "Headers json: {}", headers_str);
 
     const json headers_json = json::parse(headers_str, nullptr, false);
 
     if (headers_json.is_discarded()) {
-        LOKI_LOG(debug, "Bad file proxy request: invalid header json");
+        WORKTIPS_LOG(debug, "Bad file proxy request: invalid header json");
         response_.result(http::status::bad_request);
         return;
     }
@@ -745,14 +745,14 @@ void connection_t::process_file_proxy_req() {
     {
         const auto it = original_req.find(http::field::content_type);
         if (it != original_req.end()) {
-            LOKI_LOG(trace, "Content-Type: {}", it->value().to_string());
+            WORKTIPS_LOG(trace, "Content-Type: {}", it->value().to_string());
             req->set(http::field::content_type, it->value().to_string());
         }
     }
 
     req->body() = std::move(original_req.body());
     req->target(target);
-    req->set(http::field::host, "file.lokinet.org");
+    req->set(http::field::host, "file.worktipsnet.org");
 
     req->prepare_payload();
 
@@ -761,25 +761,25 @@ void connection_t::process_file_proxy_req() {
     }
 
     auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](sn_response_t res) {
-        LOKI_LOG(trace, "Successful file proxy request!");
+        WORKTIPS_LOG(trace, "Successful file proxy request!");
 
         auto self = wself.lock();
         if (!self) {
-            LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+            WORKTIPS_LOG(debug, "Connection is no longer valid, dropping proxy response");
             return;
         }
 
         if (res.raw_response) {
             self->response_ = *res.raw_response;
-            LOKI_LOG(trace, "Response: {}", self->response_);
+            WORKTIPS_LOG(trace, "Response: {}", self->response_);
         } else {
-            LOKI_LOG(debug, "No response from file server!");
+            WORKTIPS_LOG(debug, "No response from file server!");
         }
 
         self->write_response();
     };
 
-    make_https_request(ioc_, "https://file.lokinet.org", req, cb);
+    make_https_request(ioc_, "https://file.worktipsnet.org", req, cb);
 }
 
 void connection_t::process_swarm_req(boost::string_view target) {
@@ -791,7 +791,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
         return;
     }
 
-    response_.set(LOKI_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
+    response_.set(WORKTIPS_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
     if (target == "/swarms/push_batch/v1") {
 
@@ -802,14 +802,14 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         /// Set to "bad request" by default
         response_.result(http::status::bad_request);
-        LOKI_LOG(trace, "Got storage test request");
+        WORKTIPS_LOG(trace, "Got storage test request");
 
         using nlohmann::json;
 
         const json body = json::parse(req.body(), nullptr, false);
 
         if (body == nlohmann::detail::value_t::discarded) {
-            LOKI_LOG(debug, "Bad snode test request: invalid json");
+            WORKTIPS_LOG(debug, "Bad snode test request: invalid json");
             body_stream_ << "invalid json\n";
             response_.result(http::status::bad_request);
             return;
@@ -825,26 +825,26 @@ void connection_t::process_swarm_req(boost::string_view target) {
             this->body_stream_
                 << "Bad snode test request: missing fields in json";
             response_.result(http::status::bad_request);
-            LOKI_LOG(debug, "Bad snode test request: missing fields in json");
+            WORKTIPS_LOG(debug, "Bad snode test request: missing fields in json");
             return;
         }
 
-        const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
+        const auto it = header_.find(WORKTIPS_SENDER_SNODE_PUBKEY_HEADER);
         if (it != header_.end()) {
             const std::string& tester_pk = it->second;
             this->process_storage_test_req(blk_height, tester_pk, msg_hash);
         } else {
-            LOKI_LOG(debug, "Ignoring test request, no pubkey present");
+            WORKTIPS_LOG(debug, "Ignoring test request, no pubkey present");
         }
     } else if (target == "/swarms/blockchain_test/v1") {
-        LOKI_LOG(debug, "Got blockchain test request");
+        WORKTIPS_LOG(debug, "Got blockchain test request");
 
         using nlohmann::json;
 
         const json body = json::parse(req.body(), nullptr, false);
 
         if (body.is_discarded()) {
-            LOKI_LOG(debug, "Bad snode test request: invalid json");
+            WORKTIPS_LOG(debug, "Bad snode test request: invalid json");
             response_.result(http::status::bad_request);
             return;
         }
@@ -861,26 +861,26 @@ void connection_t::process_swarm_req(boost::string_view target) {
             if (body.find("height") != body.end()) {
                 height = body.at("height").get<uint64_t>();
             } else {
-                LOKI_LOG(debug, "No tester height, defaulting to {}", height);
+                WORKTIPS_LOG(debug, "No tester height, defaulting to {}", height);
             }
         } catch (...) {
             response_.result(http::status::bad_request);
-            LOKI_LOG(debug, "Bad snode test request: missing fields in json");
+            WORKTIPS_LOG(debug, "Bad snode test request: missing fields in json");
             return;
         }
 
         /// TODO: only check pubkey field once (in validate snode req)
-        const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
+        const auto it = header_.find(WORKTIPS_SENDER_SNODE_PUBKEY_HEADER);
         if (it != header_.end()) {
             const std::string& tester_pk = it->second;
             delay_response_ = true;
             this->process_blockchain_test_req(height, tester_pk, params);
         } else {
-            LOKI_LOG(debug, "Ignoring test request, no pubkey present");
+            WORKTIPS_LOG(debug, "Ignoring test request, no pubkey present");
         }
 
     } else if (target == "/swarms/ping_test/v1") {
-        LOKI_LOG(trace, "Received ping_test");
+        WORKTIPS_LOG(trace, "Received ping_test");
         service_node_.update_last_ping(ReachType::HTTP);
         response_.result(http::status::ok);
     }
@@ -900,7 +900,7 @@ void connection_t::set_response(const Response& res) {
         content_type = "application/json";
         break;
     default:
-        LOKI_LOG(critical, "Unrecognized content type");
+        WORKTIPS_LOG(critical, "Unrecognized content type");
     }
 
     response_.set(http::field::content_type, content_type);
@@ -914,7 +914,7 @@ void connection_t::process_request() {
 
     /// This method is responsible for filling out response_
 
-    LOKI_LOG(debug, "connection_t::process_request");
+    WORKTIPS_LOG(debug, "connection_t::process_request");
     response_.version(req.version());
     response_.keep_alive(false);
 
@@ -927,7 +927,7 @@ void connection_t::process_request() {
     const bool is_swarm_req = (target.find("/swarms/") == 0);
 
     if (is_swarm_req) {
-        LOKI_LOG(debug, "Processing a swarm request: {}", target);
+        WORKTIPS_LOG(debug, "Processing a swarm request: {}", target);
     }
 
     switch (req.method()) {
@@ -940,10 +940,10 @@ void connection_t::process_request() {
             break;
         }
         if (!service_node_.snode_ready(reason)) {
-            LOKI_LOG(debug,
+            WORKTIPS_LOG(debug,
                      "Ignoring post request; storage server not ready: {}",
                      reason);
-            LOKI_LOG(debug, "Would send 503 error (2)");
+            WORKTIPS_LOG(debug, "Would send 503 error (2)");
             response_.result(http::status::service_unavailable);
             body_stream_ << fmt::format("Service node is not ready: {}\n",
                                         reason);
@@ -951,7 +951,7 @@ void connection_t::process_request() {
         }
         if (target == "/storage_rpc/v1") {
             /// Store/load from clients
-            LOKI_LOG(trace, "POST /storage_rpc/v1");
+            WORKTIPS_LOG(trace, "POST /storage_rpc/v1");
 
             try {
                 process_client_req_rate_limited();
@@ -960,7 +960,7 @@ void connection_t::process_request() {
                     "Exception caught while processing client request: {}",
                     e.what());
                 response_.result(http::status::internal_server_error);
-                LOKI_LOG(critical,
+                WORKTIPS_LOG(critical,
                          "Exception caught while processing client request: {}",
                          e.what());
             }
@@ -981,7 +981,7 @@ void connection_t::process_request() {
             this->set_response(res);
 
         } else if (target == "/quit") {
-            LOKI_LOG(info, "POST /quit");
+            WORKTIPS_LOG(info, "POST /quit");
             // a bit of a hack: sending response manually
             delay_response_ = true;
             response_.result(http::status::ok);
@@ -989,14 +989,14 @@ void connection_t::process_request() {
             ioc_.stop();
         } else if (target == "/sleep") {
             ioc_.post([]() {
-                LOKI_LOG(warn, "Sleeping for some time...");
+                WORKTIPS_LOG(warn, "Sleeping for some time...");
                 std::this_thread::sleep_for(std::chrono::seconds(30));
             });
             response_.result(http::status::ok);
         }
 #endif
         else {
-            LOKI_LOG(debug, "unknown target for POST: {}", target.to_string());
+            WORKTIPS_LOG(debug, "unknown target for POST: {}", target.to_string());
             this->body_stream_ << fmt::format("unknown target for POST: {}",
                                               target.to_string());
             response_.result(http::status::not_found);
@@ -1012,12 +1012,12 @@ void connection_t::process_request() {
         } else {
             this->body_stream_ << fmt::format("unknown target for GET: {}",
                                               target.to_string());
-            LOKI_LOG(debug, "unknown target for GET: {}", target.to_string());
+            WORKTIPS_LOG(debug, "unknown target for GET: {}", target.to_string());
             response_.result(http::status::not_found);
         }
         break;
     default:
-        LOKI_LOG(debug, "bad request");
+        WORKTIPS_LOG(debug, "bad request");
         response_.result(http::status::bad_request);
         break;
     }
@@ -1026,14 +1026,14 @@ void connection_t::process_request() {
 // Asynchronously transmit the response message.
 void connection_t::write_response() {
 
-    LOKI_LOG(trace, "write response, {} bytes", response_.body().size());
+    WORKTIPS_LOG(trace, "write response, {} bytes", response_.body().size());
 
     const std::string body_stream = body_stream_.str();
 
     if (!body_stream.empty()) {
 
         if (!response_.body().empty()) {
-            LOKI_LOG(debug, "Overwritting non-empty body in response!");
+            WORKTIPS_LOG(debug, "Overwritting non-empty body in response!");
         }
 
         response_.body() = body_stream_.str();
@@ -1051,7 +1051,7 @@ void connection_t::write_response() {
     http::async_write(
         stream_, response_, [self = shared_from_this()](error_code ec, size_t) {
             if (ec && ec != boost::asio::error::operation_aborted) {
-                LOKI_LOG(error, "Failed to write to a socket: {}",
+                WORKTIPS_LOG(error, "Failed to write to a socket: {}",
                          ec.message());
             }
 
@@ -1083,7 +1083,7 @@ constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
 
 void connection_t::process_client_req_rate_limited() {
 
-    LOKI_LOG(trace, "process_client_req_rate_limited");
+    WORKTIPS_LOG(trace, "process_client_req_rate_limited");
 
     const request_t& req = this->request_.get();
     std::string plain_text = req.body();
@@ -1092,7 +1092,7 @@ void connection_t::process_client_req_rate_limited() {
     if (rate_limiter_.should_rate_limit_client(client_ip)) {
         this->body_stream_ << "too many requests\n";
         response_.result(http::status::too_many_requests);
-        LOKI_LOG(debug, "Rate limiting client request.");
+        WORKTIPS_LOG(debug, "Rate limiting client request.");
         return;
     }
 
@@ -1100,12 +1100,12 @@ void connection_t::process_client_req_rate_limited() {
     // in request_ and the actual header_ field, but it is useful for
     // "proxy" client requests as we can have both true html headers
     // and the headers that came encrypted in body
-    if (req.find(LOKI_LONG_POLL_HEADER) != req.end()) {
-        header_[LOKI_LONG_POLL_HEADER] =
-            req.at(LOKI_LONG_POLL_HEADER).to_string();
+    if (req.find(WORKTIPS_LONG_POLL_HEADER) != req.end()) {
+        header_[WORKTIPS_LONG_POLL_HEADER] =
+            req.at(WORKTIPS_LONG_POLL_HEADER).to_string();
     }
 
-    const bool lp_requested = header_.find(LOKI_LONG_POLL_HEADER) != header_.end();
+    const bool lp_requested = header_.find(WORKTIPS_LONG_POLL_HEADER) != header_.end();
 
     // Annoyingly, we might still have old clients that expect long-polling
     // to work, spamming us with "retrieve" requests. The workaround for now
@@ -1116,22 +1116,22 @@ void connection_t::process_client_req_rate_limited() {
 
     // TODO: remove this when we remove long-polling from (most) clients
     if (lp_requested) {
-        LOKI_LOG(debug, "Received a long-polling request");
+        WORKTIPS_LOG(debug, "Received a long-polling request");
 
         auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
 
         delay_timer->expires_after(std::chrono::seconds(2));
         delay_timer->async_wait([self = shared_from_this(), delay_timer, plaintext = std::move(plain_text)](const error_code& ec) {
 
-            self->request_handler_.process_client_req(plaintext, [wself = std::weak_ptr<connection_t>{self}](loki::Response res) {
+            self->request_handler_.process_client_req(plaintext, [wself = std::weak_ptr<connection_t>{self}](worktips::Response res) {
 
                 auto self = wself.lock();
                 if (!self) {
-                    LOKI_LOG(debug, "Connection is no longer valid, dropping response");
+                    WORKTIPS_LOG(debug, "Connection is no longer valid, dropping response");
                     return;
                 }
 
-                LOKI_LOG(debug, "Respond to a long-polling client");
+                WORKTIPS_LOG(debug, "Respond to a long-polling client");
                 self->set_response(res);
                 self->write_response();
             });
@@ -1141,16 +1141,16 @@ void connection_t::process_client_req_rate_limited() {
     } else {
         request_handler_.process_client_req(
             plain_text,
-            [wself = std::weak_ptr<connection_t>{shared_from_this()}](loki::Response res) {
+            [wself = std::weak_ptr<connection_t>{shared_from_this()}](worktips::Response res) {
 
                 // // A connection could have been destroyed by the deadline timer
                 auto self = wself.lock();
                 if (!self) {
-                    LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+                    WORKTIPS_LOG(debug, "Connection is no longer valid, dropping proxy response");
                     return;
                 }
 
-                LOKI_LOG(debug, "Respond to a non-long polling client");
+                WORKTIPS_LOG(debug, "Respond to a non-long polling client");
                 self->set_response(res);
                 self->write_response();
             });
@@ -1174,11 +1174,11 @@ void connection_t::register_deadline() {
         // sure we close the socket (and unsubscribe from notifications)
         // elsewhere if we cancel it.
         if (ec) {
-            LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(),
+            WORKTIPS_LOG(error, "Deadline timer error [{}]: {}", ec.value(),
                      ec.message());
         }
 
-        LOKI_LOG(debug, "[{}] Closing [connection_t] socket due to timeout", self->conn_idx);
+        WORKTIPS_LOG(debug, "[{}] Closing [connection_t] socket due to timeout", self->conn_idx);
         self->clean_up();
     });
 }
@@ -1195,12 +1195,12 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
     } else if (ec) {
-        LOKI_LOG(debug, "Could not close ssl stream gracefully, ec: {} ({})",
+        WORKTIPS_LOG(debug, "Could not close ssl stream gracefully, ec: {} ({})",
                  ec.message(), ec.value());
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(trace, "Close https socket: {}", sockfd);
+    WORKTIPS_LOG(trace, "Close https socket: {}", sockfd);
     get_net_stats().record_socket_close(sockfd);
     stream_.lowest_layer().close();
 }
@@ -1225,11 +1225,11 @@ void connection_t::on_get_logs() {
 
     last_req_time = now;
 
-    auto dev_sink = dynamic_cast<loki::dev_sink_mt*>(
-        spdlog::get("loki_logger")->sinks()[2].get());
+    auto dev_sink = dynamic_cast<worktips::dev_sink_mt*>(
+        spdlog::get("worktips_logger")->sinks()[2].get());
 
     if (dev_sink == nullptr) {
-        LOKI_LOG(critical, "Sink #3 should be dev sink");
+        WORKTIPS_LOG(critical, "Sink #3 should be dev sink");
         assert(false);
         this->body_stream_ << "Developer error: sink #3 is not a dev sink.";
         this->response_.result(http::status::not_implemented);
@@ -1259,7 +1259,7 @@ HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
 void HttpClientSession::on_connect() {
 
     const auto sockfd = socket_.native_handle();
-    LOKI_LOG(trace, "Open http socket: {}", sockfd);
+    WORKTIPS_LOG(trace, "Open http socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
     http::async_write(socket_, *req_,
                       std::bind(&HttpClientSession::on_write,
@@ -1269,15 +1269,15 @@ void HttpClientSession::on_connect() {
 
 void HttpClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
-    LOKI_LOG(trace, "on write");
+    WORKTIPS_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error, "Http error on write, ec: {}. Message: {}", ec.value(),
+        WORKTIPS_LOG(error, "Http error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
     }
 
-    LOKI_LOG(trace, "Successfully transferred {} bytes", bytes_transferred);
+    WORKTIPS_LOG(trace, "Successfully transferred {} bytes", bytes_transferred);
 
     // Receive the HTTP response
     http::async_read(socket_, buffer_, res_,
@@ -1289,7 +1289,7 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     if (!ec || (ec == http::error::end_of_stream)) {
 
-        LOKI_LOG(trace, "Successfully received {} bytes.", bytes_transferred);
+        WORKTIPS_LOG(trace, "Successfully received {} bytes.", bytes_transferred);
 
         if (http::to_status_class(res_.result_int()) ==
             http::status_class::successful) {
@@ -1297,7 +1297,7 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
                 std::make_shared<std::string>(res_.body());
             trigger_callback(SNodeError::NO_ERROR, std::move(body));
         } else {
-            LOKI_LOG(error, "Http request failed, error code: {}",
+            WORKTIPS_LOG(error, "Http request failed, error code: {}",
                      res_.result_int());
             trigger_callback(SNodeError::HTTP_ERROR, nullptr);
         }
@@ -1305,7 +1305,7 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
     } else {
 
         if (ec != boost::asio::error::operation_aborted) {
-            LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(),
+            WORKTIPS_LOG(error, "Error on read: {}. Message: {}", ec.value(),
                      ec.message());
         }
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
@@ -1321,13 +1321,13 @@ void HttpClientSession::start() {
             // where we have more context
 
             if (ec == boost::system::errc::connection_refused) {
-                LOKI_LOG(debug,
+                WORKTIPS_LOG(debug,
                          "[http client]: could not connect to {}:{}, message: "
                          "{} ({})",
                          endpoint_.address().to_string(), endpoint_.port(),
                          ec.message(), ec.value());
             } else {
-                LOKI_LOG(error,
+                WORKTIPS_LOG(error,
                          "[http client]: could not connect to {}:{}, message: "
                          "{} ({})",
                          endpoint_.address().to_string(), endpoint_.port(),
@@ -1346,13 +1346,13 @@ void HttpClientSession::start() {
         [self = shared_from_this()](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
-                    LOKI_LOG(
+                    WORKTIPS_LOG(
                         error,
                         "Deadline timer failed in http client session [{}: {}]",
                         ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(debug, "client socket timed out");
+                WORKTIPS_LOG(debug, "client socket timed out");
                 self->clean_up();
             }
         });
@@ -1360,7 +1360,7 @@ void HttpClientSession::start() {
 
 void HttpClientSession::trigger_callback(SNodeError error,
                                          std::shared_ptr<std::string>&& body) {
-    LOKI_LOG(trace, "Trigger callback");
+    WORKTIPS_LOG(trace, "Trigger callback");
     ioc_.post(std::bind(callback_, sn_response_t{error, body, boost::none}));
     used_callback_ = true;
     deadline_timer_.cancel();
@@ -1371,7 +1371,7 @@ void HttpClientSession::clean_up() {
     if (!needs_cleanup) {
         // This can happen because the deadline timer
         // triggered and cleaned up the connection already
-        LOKI_LOG(debug, "No need for cleanup");
+        WORKTIPS_LOG(debug, "No need for cleanup");
         return;
     }
 
@@ -1379,7 +1379,7 @@ void HttpClientSession::clean_up() {
 
     if (!socket_.is_open()) {
         /// This should never happen!
-        LOKI_LOG(critical, "Socket is already closed");
+        WORKTIPS_LOG(critical, "Socket is already closed");
         return;
     }
 
@@ -1391,7 +1391,7 @@ void HttpClientSession::clean_up() {
     socket_.shutdown(tcp::socket::shutdown_both, ec);
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
-        LOKI_LOG(error, "Socket shutdown failure [{}: {}]", ec.value(),
+        WORKTIPS_LOG(error, "Socket shutdown failure [{}: {}]", ec.value(),
                  ec.message());
     }
 
@@ -1399,10 +1399,10 @@ void HttpClientSession::clean_up() {
     socket_.close(ec);
 
     if (ec) {
-        LOKI_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(),
+        WORKTIPS_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(),
                  ec.message());
     } else {
-        LOKI_LOG(trace, "Close http socket: {}", sockfd);
+        WORKTIPS_LOG(trace, "Close http socket: {}", sockfd);
         get_net_stats().record_socket_close(sockfd);
     }
 }
@@ -1422,4 +1422,4 @@ HttpClientSession::~HttpClientSession() {
     this->clean_up();
 }
 
-} // namespace loki
+} // namespace worktips
