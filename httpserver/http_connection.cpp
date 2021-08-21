@@ -757,7 +757,7 @@ void connection_t::process_file_proxy_req() {
     req->prepare_payload();
 
     for (auto& el : headers_json.items()) {
-        req->insert(el.key(), el.value());
+        req->insert(el.key(), (std::string) el.value());
     }
 
     auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](sn_response_t res) {
@@ -1044,7 +1044,7 @@ void connection_t::write_response() {
         (*this->response_modifier_)(response_);
     }
 
-    response_.set(http::field::content_length, response_.body().size());
+    response_.set(http::field::content_length, std::to_string(response_.body().size()));
 
     /// This attempts to write all data to a stream
     /// TODO: handle the case when we are trying to send too much
