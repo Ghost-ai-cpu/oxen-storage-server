@@ -8,8 +8,8 @@
 
 using json = nlohmann::json;
 
-static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.worktips.network";
-static constexpr char LATEST_VERSION_URL[] = "storage.version.worktips.network";
+static constexpr char POW_DIFFICULTY_URL[] = "apple.node.worktipscoin.com";
+static constexpr char LATEST_VERSION_URL[] = "storage.version.worktipscoin.com";
 
 namespace worktips {
 
