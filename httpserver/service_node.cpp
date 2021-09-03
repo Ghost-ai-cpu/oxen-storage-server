@@ -339,13 +339,13 @@ void ServiceNode::bootstrap_data() {
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes;
     if (worktips::is_mainnet()) {
-        seed_nodes = {{{"public.worktips.foundation", 22023},
-                       {"storage.seed1.worktips.network", 22023},
-                       {"storage.seed2.worktips.network", 22023},
-                       {"imaginary.stream", 22023}}};
+        seed_nodes = {{{"apple.node.worktipscoin.com", 31022},
+                       {"blueberry.node.worktipscoin.com", 31022},
+                       {"cherry.node.worktipscoin.com", 31022},
+                       {"date.node.worktipscoin.com", 31022}}};
     } else {
-        seed_nodes = {{{"public.worktips.foundation", 38157},
-                       {"storage.testnetseed1.worktips.network", 38157}}};
+        seed_nodes = {{{"apple-test.node.worktipscoin.com", 38157},
+                       {"blueberry-test.node.worktipscoin.com", 38157}}};
     }
 
     auto req_counter = std::make_shared<int>(0);

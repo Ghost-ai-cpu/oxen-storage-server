@@ -8,7 +8,7 @@ namespace worktips {
 struct command_line_options {
     uint16_t port;
     std::string worktipsd_rpc_ip = "127.0.0.1";
-    uint16_t worktipsd_rpc_port = 22023; // Or 38157 if `testnet`
+    uint16_t worktipsd_rpc_port = 31022; // Or 33022 if `testnet`
     uint16_t lmq_port;
     bool force_start = false;
     bool print_version = false;

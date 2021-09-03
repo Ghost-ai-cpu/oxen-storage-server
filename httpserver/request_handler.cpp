@@ -396,7 +396,7 @@ void RequestHandler::process_lns_request(
 
 #ifdef INTEGRATION_TEST
     // use mainnet seed
-    worktipsd_client_.make_custom_worktipsd_request("public.worktips.foundation", 22023,
+    worktipsd_client_.make_custom_worktipsd_request("apple.node.worktipscoin.com", 22023,
                                                 "lns_names_to_owners", params,
                                                 std::move(on_worktipsd_res));
 #else
