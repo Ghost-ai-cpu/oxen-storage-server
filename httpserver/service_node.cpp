@@ -17,6 +17,7 @@
 
 #include "request_handler.h"
 
+#include "dns_text_records.h"
 
 #include <algorithm>
 #include <chrono>
@@ -104,6 +105,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
 constexpr std::chrono::minutes WORKTIPSD_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
+constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
 static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
@@ -153,9 +155,10 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), worktipsd_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      peer_ping_timer_(ioc), relay_timer_(ioc),
-	  worktipsd_key_pair_(worktipsd_key_pair), lmq_server_(lmq_server),
-	  worktipsd_client_(worktipsd_client), force_start_(force_start) {
+      check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
+      relay_timer_(ioc), worktipsd_key_pair_(worktipsd_key_pair),
+      lmq_server_(lmq_server), worktipsd_client_(worktipsd_client),
+      force_start_(force_start) {
 
     char buf[64] = {0};
     if (!util::base32z_encode(worktipsd_key_pair_.public_key, buf)) {
@@ -195,7 +198,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
     });
 
-
+    boost::asio::post(worker_ioc_,
+                      [this]() { this->check_version_timer_tick(); });
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate SN regardless
@@ -719,6 +723,15 @@ void ServiceNode::relay_buffered_messages() {
 
     this->relay_messages(relay_buffer_, swarm_->other_nodes());
     relay_buffer_.clear();
+}
+
+void ServiceNode::check_version_timer_tick() {
+
+    check_version_timer_.expires_after(VERSION_CHECK_INTERVAL);
+    check_version_timer_.async_wait(
+        std::bind(&ServiceNode::check_version_timer_tick, this));
+
+    dns::check_latest_version();
 }
 
 void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {

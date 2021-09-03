@@ -131,6 +131,8 @@ class ServiceNode {
 
     boost::asio::steady_timer pow_update_timer_;
 
+    boost::asio::steady_timer check_version_timer_;
+
     boost::asio::steady_timer swarm_update_timer_;
 
     boost::asio::steady_timer worktipsd_ping_timer_;
@@ -198,6 +200,8 @@ class ServiceNode {
 
     void relay_buffered_messages();
 
+    /// Check the latest version from DNS text record
+    void check_version_timer_tick();  // mutex not needed
     /// Update PoW difficulty from DNS text record
     void pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
 
