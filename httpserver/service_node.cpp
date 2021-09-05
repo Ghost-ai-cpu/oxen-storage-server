@@ -348,8 +348,8 @@ void ServiceNode::bootstrap_data() {
                        {"cherry.node.worktipscoin.com", 31022},
                        {"date.node.worktipscoin.com", 31022}}};
     } else {
-        seed_nodes = {{{"apple-test.node.worktipscoin.com", 38157},
-                       {"blueberry-test.node.worktipscoin.com", 38157}}};
+        seed_nodes = {{{"apple-test.node.worktipscoin.com", 33022},
+                       {"blueberry-test.node.worktipscoin.com", 33022}}};
     }
 
     auto req_counter = std::make_shared<int>(0);
